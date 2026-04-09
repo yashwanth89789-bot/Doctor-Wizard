@@ -1,0 +1,5 @@
+{
+  "name": "AI Doctor",
+  "description": "An intelligent assistant for preliminary symptom analysis and health guidance.",
+  "requestFramePermissions": []
+}
