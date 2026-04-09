@@ -7,7 +7,16 @@ import { useState, useEffect } from 'react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { Bot, Loader2, ClipboardList, AlertCircle, History, ChevronLeft, Stethoscope } from 'lucide-react';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+let ai: GoogleGenAI;
+if (apiKey) {
+  ai = new GoogleGenAI({ apiKey });
+} else {
+  console.error("VITE_GEMINI_API_KEY is not set. Please ensure it is configured in your deployment environment (e.g., Vercel).");
+  // Fallback for development/error handling
+  ai = new GoogleGenAI({ apiKey: 'MISSING_API_KEY' });
+}
 const model = "gemini-3-flash-preview";
 
 type DiagnosticResult = {
