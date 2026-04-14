@@ -21,6 +21,7 @@ const model = "gemini-3-flash-preview";
 
 type DiagnosticResult = {
   explanation: string;
+  biologicalInsights: string;
   advice: string;
   riskLevel: 'Low' | 'Moderate' | 'High';
 };
@@ -76,16 +77,17 @@ export default function App() {
         Duration: ${duration}
         Self-assessed Severity: ${severity}/10`,
         config: {
-          systemInstruction: "You are an AI Doctor. Analyze symptoms and provide preliminary health guidance. Return the result as a JSON object with 'explanation' (string), 'advice' (string), and 'riskLevel' ('Low', 'Moderate', 'High'). Prioritize safety, avoid definitive diagnoses, and never prescribe medications.",
+          systemInstruction: "You are an AI Doctor. Analyze symptoms and provide preliminary health guidance. Return the result as a JSON object with 'explanation' (string), 'biologicalInsights' (string), 'advice' (string), and 'riskLevel' ('Low', 'Moderate', 'High'). Prioritize safety, avoid definitive diagnoses, and never prescribe medications.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               explanation: { type: Type.STRING, description: "Possible explanations for the symptoms." },
+              biologicalInsights: { type: Type.STRING, description: "Relevant biological mechanisms or insights related to the symptoms." },
               advice: { type: Type.STRING, description: "General guidance, precautions, or lifestyle advice." },
               riskLevel: { type: Type.STRING, enum: ['Low', 'Moderate', 'High'], description: "Assessed risk level." },
             },
-            required: ['explanation', 'advice', 'riskLevel'],
+            required: ['explanation', 'biologicalInsights', 'advice', 'riskLevel'],
           },
         }
       });
@@ -189,6 +191,10 @@ export default function App() {
                 Risk Level: {result.riskLevel}
               </div>
               <p className="mt-3 leading-relaxed">{result.explanation}</p>
+            </div>
+            <div className="p-6 rounded-2xl bg-stone-50 border border-stone-200">
+              <h3 className="font-semibold text-lg text-stone-900">Biological Insights</h3>
+              <p className="mt-3 text-stone-700 leading-relaxed">{result.biologicalInsights}</p>
             </div>
             <div className="p-6 rounded-2xl bg-stone-50 border border-stone-200">
               <h3 className="font-semibold text-lg text-stone-900">Recommended Advice</h3>
