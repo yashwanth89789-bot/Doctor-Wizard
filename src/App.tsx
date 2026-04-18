@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { Bot, Loader2, ClipboardList, AlertCircle, History, ChevronLeft, Stethoscope } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -22,6 +23,7 @@ const model = "gemini-3-flash-preview";
 type DiagnosticResult = {
   explanation: string;
   biologicalInsights: string;
+  geneticAnalysis: string;
   advice: string;
   riskLevel: 'Low' | 'Moderate' | 'High';
 };
@@ -40,8 +42,12 @@ export default function App() {
   const [symptoms, setSymptoms] = useState('');
   const [duration, setDuration] = useState('');
   const [severity, setSeverity] = useState(5);
+  const [dnaData, setDnaData] = useState('');
   const [result, setResult] = useState<DiagnosticResult | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant', text: string }[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
 
   const wellnessTips = [
     "Stay hydrated: Aim for 8 glasses of water a day.",
@@ -74,20 +80,22 @@ export default function App() {
         model,
         contents: `Analyze the following symptoms and provide preliminary health guidance.
         Symptoms: ${symptoms}
+        DNA/Genetic Data: ${dnaData || 'Not provided'}
         Duration: ${duration}
         Self-assessed Severity: ${severity}/10`,
         config: {
-          systemInstruction: "You are an AI Doctor. Analyze symptoms and provide preliminary health guidance. Return the result as a JSON object with 'explanation' (string), 'biologicalInsights' (string), 'advice' (string), and 'riskLevel' ('Low', 'Moderate', 'High'). Prioritize safety, avoid definitive diagnoses, and never prescribe medications.",
+          systemInstruction: "You are an AI Doctor. Analyze symptoms and provide preliminary health guidance, incorporating provided DNA/genetic marker insight if available. Return the result as a JSON object with 'explanation' (string), 'biologicalInsights' (string, general biological context), 'geneticAnalysis' (string, specific interpretation of the provided DNA markers, or 'None' if not provided), 'advice' (string), and 'riskLevel' ('Low', 'Moderate', 'High'). Prioritize safety, avoid definitive diagnoses, and never prescribe medications.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
               explanation: { type: Type.STRING, description: "Possible explanations for the symptoms." },
-              biologicalInsights: { type: Type.STRING, description: "Relevant biological mechanisms or insights related to the symptoms." },
+              biologicalInsights: { type: Type.STRING, description: "General biological mechanisms related to the symptoms." },
+              geneticAnalysis: { type: Type.STRING, description: "Specific interpretation of the provided DNA markers, or 'None' if not provided." },
               advice: { type: Type.STRING, description: "General guidance, precautions, or lifestyle advice." },
               riskLevel: { type: Type.STRING, enum: ['Low', 'Moderate', 'High'], description: "Assessed risk level." },
             },
-            required: ['explanation', 'biologicalInsights', 'advice', 'riskLevel'],
+            required: ['explanation', 'biologicalInsights', 'geneticAnalysis', 'advice', 'riskLevel'],
           },
         }
       });
@@ -103,10 +111,38 @@ export default function App() {
       };
       saveToHistory(newItem);
       setResult(data);
+      setChatMessages([]);
       setStep('result');
     } catch (error) {
       console.error(error);
       setStep('input');
+    }
+  };
+
+  const handleChat = async () => {
+    if (!chatInput.trim()) return;
+    const userMessage = chatInput;
+    setChatInput('');
+    setChatMessages(prev => [...prev, { role: 'user', text: userMessage }]);
+    setIsChatLoading(true);
+
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: `Context: 
+Symptoms: ${symptoms}
+Analysis: ${result?.explanation}
+Advice: ${result?.advice}
+
+Follow-up User Question: ${userMessage}
+Please provide a helpful, safe, and professional follow-up answer in a conversational tone.`,
+      });
+      setChatMessages(prev => [...prev, { role: 'assistant', text: response.text || 'Sorry, I could not process your question.' }]);
+    } catch (error) {
+      console.error(error);
+      setChatMessages(prev => [...prev, { role: 'assistant', text: 'Sorry, I encountered an error answering your question.' }]);
+    } finally {
+      setIsChatLoading(false);
     }
   };
 
@@ -145,6 +181,7 @@ export default function App() {
               <h2 className="text-2xl font-semibold tracking-tight">Diagnostic Wizard</h2>
               <div className="space-y-4">
                 <textarea value={symptoms} onChange={(e) => setSymptoms(e.target.value)} placeholder="Describe your symptoms in detail..." className="w-full p-4 rounded-2xl border border-stone-200 focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all" rows={4} />
+                <textarea value={dnaData} onChange={(e) => setDnaData(e.target.value)} placeholder="Optional: Enter or paste your DNA/Genetic marker data here..." className="w-full p-4 rounded-2xl border border-stone-200 focus:ring-2 focus:ring-stone-900 focus:border-transparent transition-all" rows={3} />
                 <input value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="Duration (e.g., 2 days)" className="w-full p-4 rounded-2xl border border-stone-200 focus:ring-2 focus:ring-stone-900 transition-all" />
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-stone-700">Severity (1-10): {severity}</label>
@@ -196,11 +233,61 @@ export default function App() {
               <h3 className="font-semibold text-lg text-stone-900">Biological Insights</h3>
               <p className="mt-3 text-stone-700 leading-relaxed">{result.biologicalInsights}</p>
             </div>
+            {result.geneticAnalysis !== 'None' && (
+              <div className="p-6 rounded-2xl bg-indigo-50 border border-indigo-200">
+                <h3 className="font-semibold text-lg text-indigo-900">Genetic Analysis Insight</h3>
+                <p className="mt-3 text-indigo-800 leading-relaxed">{result.geneticAnalysis}</p>
+              </div>
+            )}
             <div className="p-6 rounded-2xl bg-stone-50 border border-stone-200">
               <h3 className="font-semibold text-lg text-stone-900">Recommended Advice</h3>
               <p className="mt-3 text-stone-700 leading-relaxed">{result.advice}</p>
             </div>
             <button onClick={() => setStep('input')} className="w-full p-4 border border-stone-900 rounded-2xl font-medium hover:bg-stone-100 transition-colors">Start New Analysis</button>
+
+            {/* Follow-up Chat */}
+            <div className="border-t border-stone-200 pt-8 mt-8 space-y-4">
+              <h3 className="font-semibold text-lg text-stone-900 flex items-center gap-2">
+                <Bot className="w-5 h-5" aria-hidden="true" /> Follow-up Questions
+              </h3>
+              <div className="space-y-4" role="log" aria-live="polite" aria-atomic="true" aria-label="Chat messages">
+                {chatMessages.map((msg, i) => (
+                  <div key={i} className={`p-4 rounded-2xl ${msg.role === 'user' ? 'bg-stone-900 text-white ml-auto max-w-[80%]' : 'bg-stone-100 text-stone-800 mr-auto max-w-[80%]'}`}>
+                    <span className="sr-only">{msg.role === 'user' ? 'You:' : 'Doctor Wizard:'}</span>
+                    {msg.text}
+                  </div>
+                ))}
+                {isChatLoading && (
+                  <div 
+                    className="p-4 rounded-2xl bg-stone-100 text-stone-500 mr-auto"
+                    role="status"
+                    aria-live="polite"
+                    aria-busy="true"
+                  >
+                    Typing...
+                  </div>
+                )}
+              </div>
+              <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); handleChat(); }}>
+                <label htmlFor="chat-input" className="sr-only">Ask a follow-up question</label>
+                <input 
+                  id="chat-input"
+                  value={chatInput} 
+                  onChange={e => setChatInput(e.target.value)} 
+                  placeholder="Ask a follow-up question..." 
+                  className="flex-grow p-4 rounded-2xl border border-stone-200" 
+                  aria-required="true"
+                />
+                <button 
+                  type="submit" 
+                  disabled={isChatLoading} 
+                  className="p-4 bg-stone-900 text-white rounded-2xl font-medium hover:bg-stone-800 disabled:opacity-50"
+                  aria-label="Send follow-up question"
+                >
+                  Ask
+                </button>
+              </form>
+            </div>
           </div>
         )}
 
@@ -209,7 +296,25 @@ export default function App() {
             <button onClick={() => setStep('input')} className="flex items-center gap-2 text-stone-500 hover:text-stone-900 font-medium transition-colors">
               <ChevronLeft className="w-5 h-5" /> Back to Wizard
             </button>
-            <h2 className="text-2xl font-semibold tracking-tight">Past Consultations</h2>
+            <h2 className="text-2xl font-semibold tracking-tight">Consultation History</h2>
+            
+            {history.length > 0 && (
+              <div className="p-6 bg-white border border-stone-200 rounded-3xl space-y-4">
+                <h3 className="font-semibold text-lg text-stone-900">Severity Trend</h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={[...history].reverse().map(h => ({ date: new Date(h.timestamp).toLocaleDateString(), severity: parseInt(h.severity) }))}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
+                      <XAxis dataKey="date" stroke="#78716c" fontSize={12} />
+                      <YAxis domain={[0, 10]} stroke="#78716c" fontSize={12} />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="severity" stroke="#1c1917" strokeWidth={3} dot={{r: 6}} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
             {history.length === 0 ? (
               <p className="text-stone-500">No past consultations found.</p>
             ) : (
@@ -217,7 +322,7 @@ export default function App() {
                 {history.map(item => (
                   <div key={item.id} className="p-5 rounded-2xl border border-stone-200 cursor-pointer hover:border-stone-400 hover:bg-stone-50 transition-all" onClick={() => { setResult(item.result); setStep('result'); }}>
                     <p className="font-medium text-stone-900">{item.symptoms.substring(0, 60)}...</p>
-                    <p className="text-sm text-stone-500 mt-1">{new Date(item.timestamp).toLocaleDateString()}</p>
+                    <p className="text-sm text-stone-500 mt-1">{new Date(item.timestamp).toLocaleDateString()} • Severity: {isNaN(parseInt(item.severity)) ? 'N/A' : item.severity}/10</p>
                   </div>
                 ))}
               </div>
